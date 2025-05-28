@@ -15,7 +15,7 @@ use uuid::Uuid;
 #[derive(Parser)]
 #[command(name = "fastgpt")]
 #[command(about = "Kagi FastGPT CLI client")]
-#[command(version = "0.1.0")]
+#[command(version = "0.1.2")]
 struct Cli {
     #[arg(long, help = "Set API key (will be saved for future use)")]
     set_api_key: Option<String>,
