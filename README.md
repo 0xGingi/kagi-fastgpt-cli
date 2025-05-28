@@ -2,6 +2,9 @@
 
 A command-line interface for [Kagi's FastGPT API](https://help.kagi.com/kagi/api/fastgpt.html) written in Rust.
 
+![image](https://github.com/user-attachments/assets/9cc9b519-5e51-487c-bc33-4798d71fe22b)
+
+
 ## Features
 
 - Conversation History
