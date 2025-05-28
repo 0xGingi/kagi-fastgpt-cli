@@ -2,6 +2,15 @@
 name = "fastgpt"
 version = "0.1.0"
 edition = "2021"
+description = "A CLI client for Kagi's FastGPT API"
+license = "MIT"
+repository = "https://github.com/0xgingi/kagi-fastgpt-cli"
+homepage = "https://github.com/0xgingi/kagi-fastgpt-cli"
+documentation = "https://github.com/0xgingi/kagi-fastgpt-cli"
+readme = "README.md"
+keywords = ["kagi", "fastgpt", "cli", "ai", "search"]
+categories = ["command-line-utilities", "web-programming"]
+authors = ["0xGingi <0xgingi@0xgingi.com>"]
 
 [dependencies]
 tokio = { version = "1.0", features = ["full"] }

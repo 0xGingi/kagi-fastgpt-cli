@@ -10,24 +10,23 @@ A command-line interface for [Kagi's FastGPT API](https://help.kagi.com/kagi/api
 
 ## Installation
 
-### From Source
-
-1. Make sure you have [Rust](https://rustup.rs/) installed
-2. Clone this repository:
-   ```bash
-   git clone https://github.com/0xgingi/kagi-fastgpt-cli
-   cd kagi-fastgpt-cli
-   ```
-3. Build and install:
-   ```bash
-   cargo install --path .
-   ```
-
 ### Using Cargo
 
 ```bash
 cargo install fastgpt
 ```
+
+### From Source
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/0xgingi/kagi-fastgpt-cli
+   cd kagi-fastgpt-cli
+   ```
+2. Build and install:
+   ```bash
+   cargo install --path .
+   ```
 
 ## Quick Start
 
