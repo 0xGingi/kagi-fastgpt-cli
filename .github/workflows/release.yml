@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-pc-windows-gnu
+            os: ubuntu-latest
+            name: fastgpt-windows-x64.exe
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: fastgpt-linux-x64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: fastgpt-linux-arm64
+          - target: armv7-unknown-linux-gnueabihf
+            os: ubuntu-latest
+            name: fastgpt-linux-arm32
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            name: fastgpt-macos-x64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            name: fastgpt-macos-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Install cross-compilation tools for ARM
+        if: matrix.target == 'aarch64-unknown-linux-gnu' || matrix.target == 'armv7-unknown-linux-gnueabihf'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
+
+      - name: Configure cargo for cross compilation
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << EOF
+          [target.x86_64-pc-windows-gnu]
+          linker = "x86_64-w64-mingw32-gcc"
+          
+          [target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+          
+          [target.armv7-unknown-linux-gnueabihf]
+          linker = "arm-linux-gnueabihf-gcc"
+          EOF
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare binary
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            cp fastgpt.exe ../../../${{ matrix.name }}
+          else
+            cp fastgpt ../../../${{ matrix.name }}
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.name }}
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            fastgpt-windows-x64.exe/fastgpt-windows-x64.exe
+            fastgpt-linux-x64/fastgpt-linux-x64
+            fastgpt-linux-arm64/fastgpt-linux-arm64
+            fastgpt-linux-arm32/fastgpt-linux-arm32
+            fastgpt-macos-x64/fastgpt-macos-x64
+            fastgpt-macos-arm64/fastgpt-macos-arm64
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
