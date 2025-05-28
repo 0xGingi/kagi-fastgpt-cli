@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for release'
+        required: true
+        default: 'v0.1.2'
+        type: string
 
 jobs:
   build:
@@ -107,6 +114,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
           files: |
             fastgpt-windows-x64.exe/fastgpt-windows-x64.exe
             fastgpt-linux-x64/fastgpt-linux-x64
