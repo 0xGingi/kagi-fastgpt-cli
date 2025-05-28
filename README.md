@@ -37,7 +37,7 @@ cargo install fastgpt
 
 2. **Set your API key** (one time setup):
    ```bash
-   fastgpt --set-api-key "your-api-key-here"
+   fastgpt --config
    ```
 
 3. **Start chatting**:
@@ -79,7 +79,7 @@ Options:
 
 #### First-time setup
 ```bash
-fastgpt --set-api-key "kagi_your_api_key_here"
+fastgpt --config
 ```
 
 #### Start interactive chat
