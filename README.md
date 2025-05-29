@@ -71,9 +71,11 @@ fastgpt [OPTIONS]
 Options:
       --set-api-key <SET_API_KEY>  Set API key (will be saved for future use)
       --show-api-key               Show current API key
+      --config                     Interactive configuraiton setup
       --cache                      Whether to allow cached responses [default: true]
       --json                       Output raw JSON response
       --reset-api-key              Reset stored API key
+      --references                 Enable or disable showing references [default: true]
   -h, --help                       Print help
   -V, --version                    Print version
 ```
