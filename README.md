@@ -53,10 +53,10 @@ cargo install fastgpt
 ### API Key Management
 
 ```bash
-# Set API key (saved for future use)
+# Set API key
 fastgpt --set-api-key "your-api-key"
 
-# Show current API key (masked for security)
+# Show current API key
 fastgpt --show-api-key
 
 # Reset/remove stored API key
