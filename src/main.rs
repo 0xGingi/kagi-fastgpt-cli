@@ -9,7 +9,7 @@ use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 #[derive(Parser)]
@@ -88,6 +88,13 @@ struct ConversationEntry {
     response: String,
 }
 
+#[derive(Clone)]
+struct FileContext {
+    path: PathBuf,
+    content: String,
+    size: usize,
+}
+
 struct Session {
     id: String,
     history: Vec<ConversationEntry>,
@@ -96,6 +103,7 @@ struct Session {
     cache: bool,
     json_mode: bool,
     show_references: bool,
+    file_contexts: Vec<FileContext>,
 }
 
 impl Session {
@@ -108,19 +116,27 @@ impl Session {
             cache,
             json_mode,
             show_references,
+            file_contexts: Vec::new(),
         }
     }
 
     fn build_contextual_query(&self, current_query: &str) -> String {
-        if self.history.is_empty() {
-            return current_query.to_string();
-        }
-
         let mut context = String::new();
-        context.push_str("Previous conversation context:\n");
         
-        for (i, entry) in self.history.iter().take(5).enumerate() {
-            context.push_str(&format!("Q{}: {}\nA{}: {}\n\n", i + 1, entry.query, i + 1, entry.response));
+        if !self.file_contexts.is_empty() {
+            context.push_str("File contexts:\n");
+            for file_ctx in &self.file_contexts {
+                context.push_str(&format!("\n--- File: {} ---\n", file_ctx.path.display()));
+                context.push_str(&file_ctx.content);
+                context.push_str("\n--- End of file ---\n\n");
+            }
+        }
+        
+        if !self.history.is_empty() {
+            context.push_str("Previous conversation context:\n");
+            for (i, entry) in self.history.iter().take(5).enumerate() {
+                context.push_str(&format!("Q{}: {}\nA{}: {}\n\n", i + 1, entry.query, i + 1, entry.response));
+            }
         }
         
         context.push_str(&format!("Current question: {}", current_query));
@@ -177,6 +193,10 @@ impl Session {
         println!("  {} - Exit the session", "/exit or /quit".bright_cyan());
         println!("  {} - Clear conversation history and screen", "/clear".bright_cyan());
         println!("  {} - Show conversation history", "/history".bright_cyan());
+        println!("  {} - Add file(s) or directory to context", "/add-file <path>".bright_cyan());
+        println!("  {} - Remove file from context", "/remove-file <path>".bright_cyan());
+        println!("  {} - List all files in context", "/list-files".bright_cyan());
+        println!("  {} - Clear all file contexts", "/clear-files".bright_cyan());
         println!("  {} - Show this help", "/help".bright_cyan());
         println!();
         println!("{} Just start typing your question!", "Tip:".bright_magenta().bold());
@@ -205,6 +225,118 @@ impl Session {
             );
             println!();
         }
+    }
+
+    fn add_file_context(&mut self, file_path: &str) -> Result<()> {
+        let path = Path::new(file_path);
+        
+        if !path.exists() {
+            anyhow::bail!("File does not exist: {}", file_path);
+        }
+        
+        if path.is_dir() {
+            return self.add_directory_context(path);
+        }
+        
+        let content = fs::read_to_string(path)
+            .context(format!("Failed to read file: {}", file_path))?;
+        
+        
+        let size = content.len();
+        let file_context = FileContext {
+            path: path.to_path_buf(),
+            content,
+            size,
+        };
+        
+        if self.file_contexts.iter().any(|f| f.path == path) {
+            anyhow::bail!("File already added: {}", file_path);
+        }
+        
+        self.file_contexts.push(file_context);
+        Ok(())
+    }
+    
+    fn add_directory_context(&mut self, dir_path: &Path) -> Result<()> {
+        let entries = fs::read_dir(dir_path)
+            .context(format!("Failed to read directory: {}", dir_path.display()))?;
+        
+        let mut added_count = 0;
+        for entry in entries {
+            let dir_entry = entry.context("Failed to read directory entry")?;
+            let path = dir_entry.path();
+            
+            if path.is_file() {
+                if let Some(extension) = path.extension() {
+                    let ext = extension.to_string_lossy().to_lowercase();
+                    if matches!(ext.as_str(), "txt" | "md" | "rs" | "py" | "js" | "ts" | "html" | "css" | "json" | "xml" | "yml" | "yaml" | "toml" | "sh" | "bat") {
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            let size = content.len();
+                            let file_context = FileContext {
+                                path: path.clone(),
+                                content,
+                                size,
+                            };
+                            
+                            if !self.file_contexts.iter().any(|f| f.path == path) {
+                                self.file_contexts.push(file_context);
+                                added_count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if added_count == 0 {
+            anyhow::bail!("No supported text files found in directory");
+        }
+        
+        Ok(())
+    }
+    
+    fn remove_file_context(&mut self, file_path: &str) -> Result<()> {
+        let path = Path::new(file_path);
+        let initial_len = self.file_contexts.len();
+        
+        self.file_contexts.retain(|f| f.path != path);
+        
+        if self.file_contexts.len() == initial_len {
+            anyhow::bail!("File not found in context: {}", file_path);
+        }
+        
+        Ok(())
+    }
+    
+    fn clear_file_contexts(&mut self) {
+        self.file_contexts.clear();
+    }
+    
+    fn list_file_contexts(&self) {
+        if self.file_contexts.is_empty() {
+            println!("{}", "No files in context.".dimmed());
+            return;
+        }
+        
+        println!("{}", "Files in Context:".bright_blue().bold());
+        println!("{}", "=".repeat(50).bright_blue());
+        
+        let total_size: usize = self.file_contexts.iter().map(|f| f.size).sum();
+        
+        for (i, file_ctx) in self.file_contexts.iter().enumerate() {
+            println!("{}. {} ({} bytes)", 
+                (i + 1).to_string().bright_cyan(),
+                file_ctx.path.display().to_string().white(),
+                file_ctx.size.to_string().dimmed()
+            );
+        }
+        
+        println!();
+        println!("{} {} files, {} total bytes", 
+            "Total:".dimmed(),
+            self.file_contexts.len().to_string().bright_green(),
+            total_size.to_string().bright_green()
+        );
     }
 }
 
@@ -426,6 +558,10 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
     println!("  {} - Exit the session", "/exit or /quit".bright_cyan());
     println!("  {} - Clear conversation history and screen", "/clear".bright_cyan());
     println!("  {} - Show conversation history", "/history".bright_cyan());
+    println!("  {} - Add file(s) or directory to context", "/add-file <path>".bright_cyan());
+    println!("  {} - Remove file from context", "/remove-file <path>".bright_cyan());
+    println!("  {} - List all files in context", "/list-files".bright_cyan());
+    println!("  {} - Clear all file contexts", "/clear-files".bright_cyan());
     println!("  {} - Show this help", "/help".bright_cyan());
     println!();
     println!("{} Just start typing your question!", "Tip:".bright_magenta().bold());
@@ -460,7 +596,52 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
                         println!("  {} - Exit the session", "/exit or /quit".bright_cyan());
                         println!("  {} - Clear conversation history and screen", "/clear".bright_cyan());
                         println!("  {} - Show conversation history", "/history".bright_cyan());
+                        println!("  {} - Add file(s) or directory to context", "/add-file <path>".bright_cyan());
+                        println!("  {} - Remove file from context", "/remove-file <path>".bright_cyan());
+                        println!("  {} - List all files in context", "/list-files".bright_cyan());
+                        println!("  {} - Clear all file contexts", "/clear-files".bright_cyan());
                         println!("  {} - Show this help", "/help".bright_cyan());
+                        continue;
+                    }
+                    _ if input.starts_with("/add-file ") => {
+                        let file_path = input.trim_start_matches("/add-file ").trim();
+                        if file_path.is_empty() {
+                            println!("{} Please specify a file path: /add-file <path>", "Error:".bright_red().bold());
+                        } else {
+                            match session.add_file_context(file_path) {
+                                Ok(()) => {
+                                    println!("{} Added file to context: {}", "✓".bright_green(), file_path.bright_cyan());
+                                }
+                                Err(e) => {
+                                    println!("{} {}", "Error:".bright_red().bold(), e);
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    _ if input.starts_with("/remove-file ") => {
+                        let file_path = input.trim_start_matches("/remove-file ").trim();
+                        if file_path.is_empty() {
+                            println!("{} Please specify a file path: /remove-file <path>", "Error:".bright_red().bold());
+                        } else {
+                            match session.remove_file_context(file_path) {
+                                Ok(()) => {
+                                    println!("{} Removed file from context: {}", "✓".bright_green(), file_path.bright_cyan());
+                                }
+                                Err(e) => {
+                                    println!("{} {}", "Error:".bright_red().bold(), e);
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    "/list-files" => {
+                        session.list_file_contexts();
+                        continue;
+                    }
+                    "/clear-files" => {
+                        session.clear_file_contexts();
+                        println!("{} All file contexts cleared.", "✓".bright_green());
                         continue;
                     }
                     _ if input.starts_with('/') => {

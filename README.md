@@ -7,9 +7,10 @@ A command-line interface for [Kagi's FastGPT API](https://help.kagi.com/kagi/api
 
 ## Features
 
-- Conversation History
-- Support for JSON output format
-- Session management commands (`/clear`, `/history`, `/help`)
+- **Conversation History** - Maintain context across multiple questions
+- **File Context Support** - Add local files and directories as context for queries
+- **JSON Output Format** - Raw API response output for integrations
+- **Session Management** - Interactive commands for managing conversations and files
 
 ## Installation
 
@@ -101,10 +102,55 @@ fastgpt --json
 
 While in interactive mode, you can use these special commands:
 
+### Conversation Management
 - `/exit` or `/quit` - Exit the session
 - `/clear` - Clear conversation history and start fresh
 - `/history` - Show your complete conversation history  
 - `/help` - Display available commands
+
+### File Context Management
+- `/add-file <path>` - Add a file or directory to context for queries
+- `/remove-file <path>` - Remove a specific file from context
+- `/list-files` - Show all files currently in context
+- `/clear-files` - Remove all files from context
+
+## File Context Feature
+
+The FastGPT CLI now supports adding local files and directories as context for your queries. This allows you to:
+
+- **Ask questions about code files**: Add source files and ask for explanations, reviews, or refactoring suggestions
+- **Analyze documents**: Include text files, markdown, configuration files, and more
+- **Multi-file analysis**: Add entire directories to analyze relationships between files
+- **Persistent context**: File contents remain available throughout your session
+
+### Supported File Types
+The CLI automatically processes these file extensions:
+- **Text**: `.txt`, `.md`
+- **Code**: `.rs`, `.py`, `.js`, `.ts`, `.html`, `.css`
+- **Config**: `.json`, `.xml`, `.yml`, `.yaml`, `.toml`
+- **Scripts**: `.sh`, `.bat`
+
+### Usage Examples
+
+```bash
+# Add a single file
+/add-file src/main.rs
+
+# Add an entire directory
+/add-file src/
+
+# Ask questions about your files
+What does the main function in main.rs do?
+
+# List files in context
+/list-files
+
+# Remove a specific file
+/remove-file src/main.rs
+
+# Clear all file contexts
+/clear-files
+```
 
 ## Configuration
 
