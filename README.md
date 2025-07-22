@@ -2,7 +2,8 @@
 
 A command-line interface for [Kagi's FastGPT API](https://help.kagi.com/kagi/api/fastgpt.html) written in Rust.
 
-![image](https://github.com/user-attachments/assets/9cc9b519-5e51-487c-bc33-4798d71fe22b)
+<img width="1560" height="1156" alt="image" src="https://github.com/user-attachments/assets/9bb9ea96-7923-413e-a7f5-26917143e703" />
+
 
 
 ## Features
