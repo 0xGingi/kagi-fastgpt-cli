@@ -6,7 +6,12 @@ use html_escape::decode_html_entities;
 use regex::Regex;
 use reqwest::Client;
 use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
+use rustyline::Editor;
+use rustyline::completion::{Completer, Pair};
+use rustyline::hint::{HistoryHinter, Hinter};
+use rustyline::highlight::Highlighter;
+use rustyline::validate::Validator;
+use rustyline::{Helper, Context as RustylineContext, Result as RustylineResult};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -104,6 +109,93 @@ struct Session {
     json_mode: bool,
     show_references: bool,
     file_contexts: Vec<FileContext>,
+}
+
+struct FastGPTHelper {
+    hinter: HistoryHinter,
+}
+
+impl Default for FastGPTHelper {
+    fn default() -> Self {
+        Self {
+            hinter: HistoryHinter::new(),
+        }
+    }
+}
+
+impl Helper for FastGPTHelper {}
+
+impl Hinter for FastGPTHelper {
+    type Hint = String;
+
+    fn hint(&self, line: &str, pos: usize, ctx: &RustylineContext<'_>) -> Option<String> {
+        if line.starts_with('/') && pos == line.len() {
+            let commands = vec![
+                "/exit",
+                "/quit", 
+                "/clear",
+                "/history",
+                "/help",
+                "/add-file",
+                "/remove-file",
+                "/list-files",
+                "/clear-files",
+            ];
+
+            let input = &line[1..];
+            
+            for cmd in commands {
+                if cmd[1..].starts_with(input) && cmd.len() > line.len() {
+                    return Some(cmd[line.len()..].to_string());
+                }
+            }
+        }
+        
+        self.hinter.hint(line, pos, ctx)
+    }
+}
+
+impl Highlighter for FastGPTHelper {}
+
+impl Validator for FastGPTHelper {}
+
+impl Completer for FastGPTHelper {
+    type Candidate = Pair;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _ctx: &RustylineContext<'_>,
+    ) -> RustylineResult<(usize, Vec<Pair>)> {
+        if !line.starts_with('/') || pos == 0 {
+            return Ok((0, vec![]));
+        }
+
+        let commands = vec![
+            "/exit",
+            "/quit", 
+            "/clear",
+            "/history",
+            "/help",
+            "/add-file ",
+            "/remove-file ",
+            "/list-files",
+            "/clear-files",
+        ];
+
+        let input = &line[1..pos];
+        let matches: Vec<Pair> = commands
+            .iter()
+            .filter(|cmd| cmd[1..].starts_with(input)) // Remove "/" from command for comparison
+            .map(|cmd| Pair {
+                display: cmd.to_string(),
+                replacement: cmd.to_string(),
+            })
+            .collect();
+
+        Ok((0, matches))
+    }
 }
 
 impl Session {
@@ -380,7 +472,7 @@ fn save_config(config: &Config) -> Result<()> {
 }
 
 async fn interactive_config_setup() -> Result<()> {
-    let mut rl = DefaultEditor::new()?;
+    let mut rl: Editor<(), _> = Editor::new()?;
     
     println!("{}", "=".repeat(60).bright_blue());
     println!("{}", "Kagi FastGPT CLI Configuration".bright_green().bold());
@@ -545,7 +637,8 @@ async fn main() -> Result<()> {
 
 async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, show_references: bool) -> Result<()> {
     let mut session = Session::new(api_key, cache, json_mode, show_references);
-    let mut rl = DefaultEditor::new()?;
+    let mut rl: Editor<FastGPTHelper, _> = Editor::new()?;
+    rl.set_helper(Some(FastGPTHelper::default()));
 
     print!("\x1B[2J\x1B[3J\x1B[H");
     std::io::Write::flush(&mut std::io::stdout()).unwrap();
