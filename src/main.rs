@@ -549,30 +549,24 @@ impl Session {
     }
     
     fn list_file_contexts(&self) {
+        println!();
         if self.file_contexts.is_empty() {
-            println!("{}", "No files in context.".dimmed());
+            println!("{} No files in context.", "Files:".dimmed());
             return;
         }
         
-        println!("{}", "Files in Context:".bright_blue().bold());
-        println!("{}", "=".repeat(50).bright_blue());
+        println!("{} {} files", "Files:".bright_blue().bold(), self.file_contexts.len().to_string().bright_cyan());
         
         let total_size: usize = self.file_contexts.iter().map(|f| f.size).sum();
         
-        for (i, file_ctx) in self.file_contexts.iter().enumerate() {
-            println!("{}. {} ({} bytes)", 
-                (i + 1).to_string().bright_cyan(),
-                file_ctx.path.display().to_string().white(),
-                file_ctx.size.to_string().dimmed()
+        for file_ctx in &self.file_contexts {
+            println!("  {} {}", 
+                file_ctx.path.display().to_string().bright_cyan(),
+                format!("({} bytes)", file_ctx.size).dimmed()
             );
         }
         
-        println!();
-        println!("{} {} files, {} total bytes", 
-            "Total:".dimmed(),
-            self.file_contexts.len().to_string().bright_green(),
-            total_size.to_string().bright_green()
-        );
+        println!("  {} {}", "Total:".dimmed(), format!("{} bytes", total_size).bright_green());
     }
 }
 
@@ -806,7 +800,7 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
     println!();
 
     loop {
-        match rl.readline(" ") {
+        match rl.readline("❯ ") {
             Ok(line) => {
                 let input = line.trim();
                 
@@ -827,6 +821,7 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
                     }
                     "/history" => {
                         session.show_history();
+                        println!();
                         continue;
                     }
                     "/help" => {
@@ -840,6 +835,7 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
                         println!("  {} - Clear all file contexts", "/clear-files".bright_cyan());
                         println!("  {} - Check API balance", "/balance".bright_cyan());
                         println!("  {} - Show this help", "/help".bright_cyan());
+                        println!();
                         continue;
                     }
                     _ if input.starts_with("/add-file ") => {
@@ -849,13 +845,16 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
                         } else {
                             match session.add_file_context(file_path) {
                                 Ok(()) => {
-                                    println!("Added file to context: {}", file_path.bright_cyan());
+                                    println!();
+                                    println!("{} {}", "Added:".bright_green(), file_path.bright_cyan());
                                 }
                                 Err(e) => {
+                                    println!();
                                     println!("{} {}", "Error:".bright_red().bold(), e);
                                 }
                             }
                         }
+                        println!();
                         continue;
                     }
                     _ if input.starts_with("/remove-file ") => {
@@ -865,38 +864,49 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
                         } else {
                             match session.remove_file_context(file_path) {
                                 Ok(()) => {
-                                    println!("Removed file from context: {}", file_path.bright_cyan());
+                                    println!();
+                                    println!("{} {}", "Removed:".bright_yellow(), file_path.bright_cyan());
                                 }
                                 Err(e) => {
+                                    println!();
                                     println!("{} {}", "Error:".bright_red().bold(), e);
                                 }
                             }
                         }
+                        println!();
                         continue;
                     }
                     "/list-files" => {
                         session.list_file_contexts();
+                        println!();
                         continue;
                     }
                     "/clear-files" => {
                         session.clear_file_contexts();
-                        println!("All file contexts cleared.");
+                        println!();
+                        println!("{} All file contexts cleared.", "Cleared:".bright_yellow());
+                        println!();
                         continue;
                     }
                     "/balance" => {
                         match session.check_balance().await {
                             Ok(balance) => {
-                                println!("Current API balance: ${:.3}", balance.to_string().bright_green());
+                                println!();
+                                println!("{} ${:.3}", "Balance:".dimmed(), balance.to_string().bright_green());
                             }
                             Err(e) => {
+                                println!();
                                 println!("{} Failed to check balance: {}", "Error:".bright_red().bold(), e);
                             }
                         }
+                        println!();
                         continue;
                     }
                     _ if input.starts_with('/') => {
+                        println!();
                         println!("{} Unknown command: {}. Type /help for available commands.", 
                             "Error:".bright_red().bold(), input.bright_red());
+                        println!();
                         continue;
                     }
                     _ => {
@@ -910,7 +920,9 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
                                 println!();
                             }
                             Err(e) => {
+                                println!();
                                 println!("{} {}", "Error:".bright_red().bold(), e);
+                                println!();
                             }
                         }
                     }
@@ -963,9 +975,8 @@ fn remove_reference_numbers(text: &str) -> String {
 }
 
 fn print_formatted_response(response: &FastGPTResponse, query: &str, show_references: bool) {
-    println!("{}", "=".repeat(80).bright_blue());
-    println!("{} {}", "Query:".bright_green().bold(), query.white());
-    println!("{}", "=".repeat(80).bright_blue());
+    println!();
+    println!("{} {}", ">".bright_blue().bold(), query.bright_white());
     println!();
     
     let output_text = if show_references {
@@ -975,36 +986,32 @@ fn print_formatted_response(response: &FastGPTResponse, query: &str, show_refere
     };
     
     println!("{}", format_markdown_text(&output_text));
-    println!();
 
     if show_references && !response.data.references.is_empty() {
+        println!();
         println!("{}", "References:".bright_yellow().bold());
-        println!("{}", "-".repeat(40).yellow());
         for (i, reference) in response.data.references.iter().enumerate() {
-            println!("{}. {}", (i + 1).to_string().bright_cyan(), format_markdown_text(&reference.title).bright_white().bold());
-            println!("   {}", reference.url.blue().underline());
+            println!("  {}. {}", (i + 1).to_string().bright_cyan(), format_markdown_text(&reference.title).bright_white());
+            println!("     {}", reference.url.blue().underline());
             if !reference.snippet.is_empty() {
-                println!("   {}", format_markdown_text(&reference.snippet).dimmed());
+                println!("     {}", format_markdown_text(&reference.snippet).dimmed());
             }
-            println!();
         }
     }
 
-    println!("{}", "-".repeat(80).bright_black());
-    let balance_info = if let Some(balance) = response.meta.api_balance {
-        format!(" | {} ${:.3}", "Balance:".dimmed(), balance.to_string().bright_green())
-    } else {
-        String::new()
-    };
-    
-    println!(
-        "{} {} | {} {} | {} {}ms{}",
+    println!();
+    println!("{}", format!(
+        "{} {} • {} {} • {} {}ms{}",
         "Tokens:".dimmed(),
         response.data.tokens.to_string().bright_magenta(),
         "Node:".dimmed(),
         response.meta.node.bright_magenta(),
         "Time:".dimmed(),
         response.meta.ms.to_string().bright_magenta(),
-        balance_info
-    );
+        if let Some(balance) = response.meta.api_balance {
+            format!(" • {} ${:.3}", "Balance:".dimmed(), balance.to_string().bright_green())
+        } else {
+            String::new()
+        }
+    ).dimmed());
 }
