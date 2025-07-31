@@ -20,7 +20,7 @@ use uuid::Uuid;
 #[derive(Parser)]
 #[command(name = "fastgpt")]
 #[command(about = "Kagi FastGPT CLI client")]
-#[command(version = "0.1.2")]
+#[command(version = "0.2.2")]
 struct Cli {
     #[arg(long, help = "Set API key (will be saved for future use)")]
     set_api_key: Option<String>,
@@ -71,6 +71,7 @@ struct Meta {
     id: String,
     node: String,
     ms: u64,
+    api_balance: Option<f64>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -129,6 +130,10 @@ impl Hinter for FastGPTHelper {
     type Hint = String;
 
     fn hint(&self, line: &str, pos: usize, ctx: &RustylineContext<'_>) -> Option<String> {
+        if (line.starts_with("/add-file ") || line.starts_with("/remove-file ")) && pos == line.len() {
+            return self.hint_file_path(line);
+        }
+        
         if line.starts_with('/') && pos == line.len() {
             let commands = vec![
                 "/exit",
@@ -172,6 +177,10 @@ impl Completer for FastGPTHelper {
             return Ok((0, vec![]));
         }
 
+        if line.starts_with("/add-file ") || line.starts_with("/remove-file ") {
+            return self.complete_file_path(line, pos);
+        }
+
         let commands = vec![
             "/exit",
             "/quit", 
@@ -187,13 +196,107 @@ impl Completer for FastGPTHelper {
         let input = &line[1..pos];
         let matches: Vec<Pair> = commands
             .iter()
-            .filter(|cmd| cmd[1..].starts_with(input)) // Remove "/" from command for comparison
+            .filter(|cmd| cmd[1..].starts_with(input))
             .map(|cmd| Pair {
                 display: cmd.to_string(),
                 replacement: cmd.to_string(),
             })
             .collect();
 
+        Ok((0, matches))
+    }
+}
+
+impl FastGPTHelper {
+    fn hint_file_path(&self, line: &str) -> Option<String> {
+        let cmd_start = if line.starts_with("/add-file ") {
+            "/add-file ".len()
+        } else if line.starts_with("/remove-file ") {
+            "/remove-file ".len()
+        } else {
+            return None;
+        };
+
+        let file_part = &line[cmd_start..];
+        let (dir_path, partial_name) = if let Some(last_slash) = file_part.rfind('/') {
+            (&file_part[..last_slash + 1], &file_part[last_slash + 1..])
+        } else {
+            ("./", file_part)
+        };
+
+        let dir = Path::new(dir_path);
+        
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                if file_name.starts_with(partial_name) && file_name.len() > partial_name.len() {
+                    let remaining = &file_name[partial_name.len()..];
+                    return if entry.path().is_dir() {
+                        Some(format!("{}/", remaining))
+                    } else {
+                        Some(remaining.to_string())
+                    };
+                }
+            }
+        }
+        
+        None
+    }
+
+    fn complete_file_path(&self, line: &str, pos: usize) -> RustylineResult<(usize, Vec<Pair>)> {
+        let cmd_start = if line.starts_with("/add-file ") {
+            "/add-file ".len()
+        } else if line.starts_with("/remove-file ") {
+            "/remove-file ".len()
+        } else {
+            return Ok((0, vec![]));
+        };
+
+        if pos < cmd_start {
+            return Ok((0, vec![]));
+        }
+
+        let file_part = &line[cmd_start..pos];
+        let (dir_path, partial_name) = if let Some(last_slash) = file_part.rfind('/') {
+            (&file_part[..last_slash + 1], &file_part[last_slash + 1..])
+        } else {
+            ("./", file_part)
+        };
+
+        let dir = Path::new(dir_path);
+        let mut matches = Vec::new();
+
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                if file_name.starts_with(partial_name) {
+                    let full_path = if dir_path == "./" && !file_part.starts_with("./") {
+                        file_name.clone()
+                    } else {
+                        format!("{}{}", dir_path, file_name)
+                    };
+                    
+                    let display = if entry.path().is_dir() {
+                        format!("{}/", file_name)
+                    } else {
+                        file_name.clone()
+                    };
+
+                    let replacement = if entry.path().is_dir() {
+                        format!("{}/", full_path)
+                    } else {
+                        full_path
+                    };
+
+                    matches.push(Pair {
+                        display,
+                        replacement: format!("{}{}", &line[..cmd_start], replacement),
+                    });
+                }
+            }
+        }
+
+        matches.sort_by(|a, b| a.display.cmp(&b.display));
         Ok((0, matches))
     }
 }
@@ -834,13 +937,20 @@ fn print_formatted_response(response: &FastGPTResponse, query: &str, show_refere
     }
 
     println!("{}", "-".repeat(80).bright_black());
+    let balance_info = if let Some(balance) = response.meta.api_balance {
+        format!(" | {} ${:.3}", "Balance:".dimmed(), balance.to_string().bright_green())
+    } else {
+        String::new()
+    };
+    
     println!(
-        "{} {} | {} {} | {} {}ms",
+        "{} {} | {} {} | {} {}ms{}",
         "Tokens:".dimmed(),
         response.data.tokens.to_string().bright_magenta(),
         "Node:".dimmed(),
         response.meta.node.bright_magenta(),
         "Time:".dimmed(),
-        response.meta.ms.to_string().bright_magenta()
+        response.meta.ms.to_string().bright_magenta(),
+        balance_info
     );
 }
