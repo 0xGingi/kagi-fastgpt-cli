@@ -13,6 +13,7 @@ use rustyline::highlight::Highlighter;
 use rustyline::validate::Validator;
 use rustyline::{Helper, Context as RustylineContext, Result as RustylineResult};
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -145,6 +146,7 @@ impl Hinter for FastGPTHelper {
                 "/remove-file",
                 "/list-files",
                 "/clear-files",
+                "/balance",
             ];
 
             let input = &line[1..];
@@ -191,6 +193,7 @@ impl Completer for FastGPTHelper {
             "/remove-file ",
             "/list-files",
             "/clear-files",
+            "/balance",
         ];
 
         let input = &line[1..pos];
@@ -375,6 +378,43 @@ impl Session {
         Ok(fastgpt_response)
     }
 
+    async fn check_balance(&self) -> Result<f64> {
+        let request_body = FastGPTRequest {
+            query: "ping".to_string(),
+            cache: true,
+            web_search: false,
+        };
+
+        let response = self.client
+            .post("https://kagi.com/api/v0/fastgpt")
+            .header("Authorization", format!("Bot {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to send balance check request to FastGPT API")?;
+
+        let response_text = response.text().await.unwrap_or_default();
+        
+        if let Ok(fastgpt_response) = serde_json::from_str::<FastGPTResponse>(&response_text) {
+            if let Some(balance) = fastgpt_response.meta.api_balance {
+                return Ok(balance);
+            }
+        }
+        
+        if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&response_text) {
+            if let Some(meta) = json_value.get("meta") {
+                if let Some(balance) = meta.get("api_balance") {
+                    if let Some(balance_f64) = balance.as_f64() {
+                        return Ok(balance_f64);
+                    }
+                }
+            }
+        }
+
+        anyhow::bail!("API balance not available in response: {}", response_text)
+    }
+
     fn clear_history(&mut self) {
         self.history.clear();
         print!("\x1B[2J\x1B[3J\x1B[H");
@@ -392,6 +432,7 @@ impl Session {
         println!("  {} - Remove file from context", "/remove-file <path>".bright_cyan());
         println!("  {} - List all files in context", "/list-files".bright_cyan());
         println!("  {} - Clear all file contexts", "/clear-files".bright_cyan());
+        println!("  {} - Check API balance", "/balance".bright_cyan());
         println!("  {} - Show this help", "/help".bright_cyan());
         println!();
         println!("{} Just start typing your question!", "Tip:".bright_magenta().bold());
@@ -664,7 +705,7 @@ async fn interactive_config_setup() -> Result<()> {
     save_config(&config)?;
     
     println!();
-    println!("{}", "✓ Configuration saved successfully!".bright_green().bold());
+    println!("{}", "Configuration saved successfully!".bright_green().bold());
     println!();
     println!("{}", "Your settings:".bright_blue().bold());
     println!("  {} {}", "API Key:".dimmed(), "Set (hidden for security)".bright_green());
@@ -709,7 +750,7 @@ async fn main() -> Result<()> {
         config.show_references = Some(show_references);
         save_config(&config)?;
         let status = if show_references { "enabled" } else { "disabled" };
-        println!("{} References display has been {}.", "✓".bright_green(), status.bright_cyan());
+        println!("References display has been {}.", status.bright_cyan());
         return Ok(());
     }
 
@@ -758,6 +799,7 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
     println!("  {} - Remove file from context", "/remove-file <path>".bright_cyan());
     println!("  {} - List all files in context", "/list-files".bright_cyan());
     println!("  {} - Clear all file contexts", "/clear-files".bright_cyan());
+    println!("  {} - Check API balance", "/balance".bright_cyan());
     println!("  {} - Show this help", "/help".bright_cyan());
     println!();
     println!("{} Just start typing your question!", "Tip:".bright_magenta().bold());
@@ -796,6 +838,7 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
                         println!("  {} - Remove file from context", "/remove-file <path>".bright_cyan());
                         println!("  {} - List all files in context", "/list-files".bright_cyan());
                         println!("  {} - Clear all file contexts", "/clear-files".bright_cyan());
+                        println!("  {} - Check API balance", "/balance".bright_cyan());
                         println!("  {} - Show this help", "/help".bright_cyan());
                         continue;
                     }
@@ -806,7 +849,7 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
                         } else {
                             match session.add_file_context(file_path) {
                                 Ok(()) => {
-                                    println!("{} Added file to context: {}", "✓".bright_green(), file_path.bright_cyan());
+                                    println!("Added file to context: {}", file_path.bright_cyan());
                                 }
                                 Err(e) => {
                                     println!("{} {}", "Error:".bright_red().bold(), e);
@@ -822,7 +865,7 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
                         } else {
                             match session.remove_file_context(file_path) {
                                 Ok(()) => {
-                                    println!("{} Removed file from context: {}", "✓".bright_green(), file_path.bright_cyan());
+                                    println!("Removed file from context: {}", file_path.bright_cyan());
                                 }
                                 Err(e) => {
                                     println!("{} {}", "Error:".bright_red().bold(), e);
@@ -837,7 +880,18 @@ async fn run_interactive_session(api_key: String, cache: bool, json_mode: bool, 
                     }
                     "/clear-files" => {
                         session.clear_file_contexts();
-                        println!("{} All file contexts cleared.", "✓".bright_green());
+                        println!("All file contexts cleared.");
+                        continue;
+                    }
+                    "/balance" => {
+                        match session.check_balance().await {
+                            Ok(balance) => {
+                                println!("Current API balance: ${:.3}", balance.to_string().bright_green());
+                            }
+                            Err(e) => {
+                                println!("{} Failed to check balance: {}", "Error:".bright_red().bold(), e);
+                            }
+                        }
                         continue;
                     }
                     _ if input.starts_with('/') => {

@@ -108,6 +108,7 @@ While in interactive mode, you can use these special commands:
 - `/clear` - Clear conversation history and start fresh
 - `/history` - Show your complete conversation history  
 - `/help` - Display available commands
+- `/balance` - Check API balance
 
 ### File Context Management
 - `/add-file <path>` - Add a file or directory to context for queries
